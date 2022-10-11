@@ -87,7 +87,8 @@ func TestSchemaRecordFieldWithDefaults(t *testing.T) {
 }
 
 func TestRecordDecodedEmptyBuffer(t *testing.T) {
-	testBinaryDecodeFailShortBuffer(t, `{"type":"record","name":"foo","fields":[{"name":"field1","type":"int"}]}`, nil)
+	// 不存在 record binary decode short buffer 错误了，这里注释掉
+	// testBinaryDecodeFailShortBuffer(t, `{"type":"record","name":"foo","fields":[{"name":"field1","type":"int"}]}`, nil)
 }
 
 func TestRecordFieldTypeHasPrimitiveName(t *testing.T) {
@@ -362,6 +363,31 @@ func TestRecordEncodeFail(t *testing.T) {
 
 	testBinaryEncodeFail(t, schema, map[string]interface{}{"f1": "foo"}, `field "f2": schema does not specify default value and no value provided`)
 	testBinaryEncodeFail(t, schema, map[string]interface{}{"f1": "foo", "f2": 13}, `field "f2": value does not match its schema`)
+}
+
+func TestRecordDecodeFail(t *testing.T) {
+	schema := `{
+		"type": "record",
+		"name": "r1",
+		"fields": [
+		  {"name": "f1", "type": "string"},
+		  {"name": "f2", "type": "string"}
+		]
+	  }`
+
+	testBinaryDecodeFail(t, schema, []byte("\babcd"), "schema does not specify default value and no value provided")
+}
+
+func TestRecordDecodePassWithDefault(t *testing.T) {
+	schema := `{
+		"type": "record",
+		"name": "r1",
+		"fields": [
+		  {"name": "f1", "type": "string", "default":"df1"},
+		  {"name": "f2", "type": "string", "default":"df2"}
+		]
+	  }`
+	testBinaryDecodePass(t, schema, map[string]interface{}{"f1": "abcd", "f2": "df2"}, []byte("\babcd"))
 }
 
 func TestRecordTextDecodeFail(t *testing.T) {

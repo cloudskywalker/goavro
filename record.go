@@ -11,6 +11,8 @@ package goavro
 
 import (
 	"fmt"
+	"io"
+	"strings"
 )
 
 func makeRecordCodec(st map[string]*Codec, enclosingNamespace string, schemaMap map[string]interface{}, cb *codecBuilder) (*Codec, error) {
@@ -164,16 +166,36 @@ func makeRecordCodec(st map[string]*Codec, enclosingNamespace string, schemaMap 
 
 	c.nativeFromBinary = func(buf []byte) (interface{}, []byte, error) {
 		recordMap := make(map[string]interface{}, len(codecFromIndex))
+		var err error
 		for i, fieldCodec := range codecFromIndex {
 			name := nameFromIndex[i]
 			var value interface{}
-			var err error
 			value, buf, err = fieldCodec.nativeFromBinary(buf)
 			if err != nil {
+				// NOTE: 由于avro的编码格式是只对value编码，严格要求顺序，
+				// 所以当buf不够时，意味着解析已经结束
+				if strings.Contains(err.Error(), io.ErrShortBuffer.Error()) {
+					break
+				}
 				return nil, nil, fmt.Errorf("cannot decode binary record %q field %q: %s", c.typeName, name, err)
 			}
 			recordMap[name] = value
 		}
+		if err != nil {
+			// NOTE: 有错误意味着需要填充默认字段
+			// set missing field keys to their respective default values
+			for fieldName := range codecFromFieldName {
+				if _, ok := recordMap[fieldName]; !ok {
+					defaultValue, ok := defaultValueFromName[fieldName]
+					if !ok {
+						return nil, nil, fmt.Errorf("cannot decode binary record %q field %q: schema does not specify default value and no value provided",
+							c.typeName, fieldName)
+					}
+					recordMap[fieldName] = defaultValue
+				}
+			}
+		}
+
 		return recordMap, buf, nil
 	}
 
